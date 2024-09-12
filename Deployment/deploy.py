@@ -1,6 +1,5 @@
 import io
 import json
-
 import torch
 from torchvision import models
 import torchvision.transforms as transforms
@@ -10,6 +9,12 @@ from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
+@app.route('/')
+def hello():
+    return 'Hello World!'
+
+
+n_classes=5
 class_index = {
     0:'Light Diseases and Disorders of Pigmentation',
     1:'Acne and Rosacea Photos',
@@ -18,15 +23,22 @@ class_index = {
     4:'Hair Loss Photos Alopecia and other Hair Diseases',
 }
 
-PATH='model_12'
-model = torch.load(PATH, weights_only=False,map_location=torch.device('cpu'))
+PATH='best_model.pth'
+import torchvision.models as models
+import torch.nn as nn
+
+
+model = models.resnet50()
+model.fc = nn.Linear(model.fc.in_features, n_classes)
+
+model.load_state_dict(torch.load("best_model.pth", map_location=torch.device('cpu')))
 model.eval()
 
 
 def transform_image(image_bytes):
     my_transforms = transforms.Compose(
-        transforms.PILToTensor(),
-        transforms.ToDtype(torch.float32, scale = True),
+       [ transforms.PILToTensor(),
+        transforms.Lambda(lambda x: x.float() / 255),]
     )
     image = Image.open(io.BytesIO(image_bytes))
     return my_transforms(image).unsqueeze(0)
@@ -34,10 +46,11 @@ def transform_image(image_bytes):
 
 def get_prediction(image_bytes):
     tensor = transform_image(image_bytes=image_bytes)
-    outputs = model.forward(tensor)
+    outputs = model(tensor)
+
     _, y_hat = outputs.max(1)
-    predicted_idx = str(y_hat.item())
-    return class_index[predicted_idx]
+    predicted_idx = y_hat.item()
+    return predicted_idx, class_index[predicted_idx]
 
 
 @app.route('/predict', methods=['POST'])
